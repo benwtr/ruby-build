@@ -1,0 +1,27 @@
+# This is an rbenv config that installs ruby 1.9.3 with railsexpress patchset from https://github.com/skaes/rvm-patchsets
+#
+# https://gist.github.com/burke/1688857 was helpful to look at to see how this is done
+#
+# required debian packages:
+# apt-get install autoconf build-essential openssl libreadline6 libreadline6-dev zlib1g zlib1g-dev libssl-dev ncurses-dev libyaml-dev libffi-dev tk-dev libgdbm-dev
+ 
+#ruby patch revision
+rev=392
+ 
+build_package_patches() {
+  local package_name="$1"
+  {
+    git clone https://github.com/skaes/rvm-patchsets.git
+    #export CFLAGS="-O3 -march=core2"   # uncomment on mac
+    export CFLAGS="-O3 -march=native"  # uncomment on linux
+    for i in rvm-patchsets/patches/ruby/1.9.3/p$rev/railsexpress/* ; do cat $i| patch -p1 ; done
+    autoconf
+    ./configure --prefix="$PREFIX_PATH" $CONFIGURE_OPTS
+    make -j 8
+    make install
+  } >&4 2>&1
+ 
+}
+ 
+install_package "yaml-0.1.4" "http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz#36c852831d02cf90508c29852361d01b"
+install_package "ruby-1.9.3-p$rev" "http://ftp.ruby-lang.org/pub/ruby/1.9/ruby-1.9.3-p$rev.tar.gz" patches
