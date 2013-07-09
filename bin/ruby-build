@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-RUBY_BUILD_VERSION="20130501"
+RUBY_BUILD_VERSION="20130628"
 
 set -E
 exec 3<&2 # preserve original stderr at fd 3
@@ -172,11 +172,11 @@ verify_checksum() {
   [ -e "$filename" ] || return 0
 
   # If there's no expected checksum, return success
-  local expected_checksum="$2"
+  local expected_checksum=`echo "$2" | tr [A-Z] [a-z]`
   [ -n "$expected_checksum" ] || return 0
 
   # If the computed checksum is empty, return failure
-  local computed_checksum="$(compute_md5 < "$filename")"
+  local computed_checksum=`echo "$(compute_md5 < "$filename")" | tr [A-Z] [a-z]`
   [ -n "$computed_checksum" ] || return 1
 
   if [ "$expected_checksum" != "$computed_checksum" ]; then
@@ -378,8 +378,13 @@ build_package_standard() {
   local PACKAGE_MAKE_OPTS_ARRAY="${package_var_name}_MAKE_OPTS_ARRAY[@]"
   local PACKAGE_CFLAGS="${package_var_name}_CFLAGS"
 
-  { CFLAGS="$CFLAGS ${!PACKAGE_CFLAGS}" ${!PACKAGE_CONFIGURE:-./configure} --prefix="${!PACKAGE_PREFIX_PATH:-$PREFIX_PATH}" $CONFIGURE_OPTS ${!PACKAGE_CONFIGURE_OPTS} "${!PACKAGE_CONFIGURE_OPTS_ARRAY}"
-    "$MAKE" $MAKE_OPTS ${!PACKAGE_MAKE_OPTS} "${!PACKAGE_MAKE_OPTS_ARRAY}"
+  ( if [ "${CFLAGS+defined}" ] || [ "${!PACKAGE_CFLAGS+defined}" ]; then
+      export CFLAGS="$CFLAGS ${!PACKAGE_CFLAGS}"
+    fi
+    ${!PACKAGE_CONFIGURE:-./configure} --prefix="${!PACKAGE_PREFIX_PATH:-$PREFIX_PATH}" $CONFIGURE_OPTS ${!PACKAGE_CONFIGURE_OPTS} "${!PACKAGE_CONFIGURE_OPTS_ARRAY}"
+  ) >&4 2>&1
+
+  { "$MAKE" $MAKE_OPTS ${!PACKAGE_MAKE_OPTS} "${!PACKAGE_MAKE_OPTS_ARRAY}"
     "$MAKE" install
   } >&4 2>&1
 }
@@ -423,7 +428,7 @@ build_package_ree_installer() {
 build_package_rbx() {
   local package_name="$1"
 
-  { ./configure --prefix="$PREFIX_PATH" --gemsdir="$PREFIX_PATH"
+  { ./configure --prefix="$PREFIX_PATH" --gemsdir="$PREFIX_PATH" $RUBY_CONFIGURE_OPTS
     rake install
   } >&4 2>&1
 }
@@ -603,8 +608,18 @@ verify_gcc() {
 
 has_broken_mac_openssl() {
   [ "$(uname -s)" = "Darwin" ] &&
-  [ "$(openssl version 2>/dev/null || true)" = "OpenSSL 0.9.8r 8 Feb 2011" ] &&
-  [[ "$RUBY_CONFIGURE_OPTS" != *--with-openssl-dir=* ]]
+  [[ "$(openssl version 2>/dev/null || true)" = "OpenSSL 0.9.8"?* ]] &&
+  [[ "$RUBY_CONFIGURE_OPTS" != *--with-openssl-dir=* ]] &&
+  ! use_homebrew_openssl
+}
+
+use_homebrew_openssl() {
+  local ssldir="$(brew --prefix openssl 2>/dev/null || true)"
+  if [ -d "$ssldir" ]; then
+    package_option ruby configure --with-openssl-dir="$ssldir"
+  else
+    return 1
+  fi
 }
 
 build_package_mac_openssl() {
